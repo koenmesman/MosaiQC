@@ -1,0 +1,19 @@
+[build-system]
+requires = [
+  "scikit-build-core>=0.8",
+  "pybind11>=2.10",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "opt-core-refactor"
+version = "0.0.0"
+description = "Refactored installable copy of the opt_core C++ extension package"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "Unknown"}]
+
+[tool.scikit-build]
+wheel.packages = ["src/opt_core"]
+cmake.minimum-version = "3.18"
