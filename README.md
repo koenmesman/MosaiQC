@@ -43,22 +43,4 @@ python -m build
 python -m twine check dist/*
 ```
 
-## Publish
-
-Publish to TestPyPI first:
-
-```bash
-python -m twine upload --repository testpypi dist/*
-```
-
-Publish to PyPI:
-
-```bash
-python -m twine upload dist/*
-```
-
-## Notes
-
-The package imports as `MosaiQC`. METIS and OpenMP are detected at build time
-when available; the extension also builds without METIS support. The old
-`opt_core` import path remains as a compatibility shim.
+when available; the extension also builds without METIS support.
