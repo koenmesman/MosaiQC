@@ -3,6 +3,9 @@
 MosaiQC is a fast quantum circuit cutting package with a C++ optimization
 backend exposed through Python as `MosaiQC`.
 
+## METIS dependency
+When available, the extension also builds without METIS support. However, it is highly recommended to install METIS for MosaiQC's full functionality. Installation instructions for METIS can be found here: https://github.com/KarypisLab/METIS.
+
 ## Installation
 
 Install the core package:
@@ -42,5 +45,3 @@ python -m pip install ".[dev]"
 python -m build
 python -m twine check dist/*
 ```
-
-when available; the extension also builds without METIS support.
