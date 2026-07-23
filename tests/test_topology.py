@@ -15,7 +15,7 @@ from __future__ import annotations
 from qiskit_ibm_runtime.fake_provider import FakeBelemV2
 from qiskit_aer.noise import NoiseModel
 
-import opt_core
+import MosaiQC as mq
 
 
 def _assert_close(a: float, b: float, tol: float = 1e-12) -> None:
@@ -27,11 +27,11 @@ def test_backend_conversion_matches_noise_model() -> None:
     backend = FakeBelemV2()
 
     # Path A: C++ TopologyGraph converts backend -> NoiseModel internally.
-    topo_from_backend = opt_core.TopologyGraph(backend=backend)
+    topo_from_backend = mq.TopologyGraph(backend=backend)
     print("okay")
     # Path B: Python converts backend -> NoiseModel, then C++ TopologyGraph consumes that model.
     model = NoiseModel.from_backend(backend)
-    topo_from_model = opt_core.TopologyGraph(noise_model=model)
+    topo_from_model = mq.TopologyGraph(noise_model=model)
 
     # Compare qubit sets
     qs_a = set(topo_from_backend.qubits())
@@ -63,6 +63,6 @@ if __name__ == "__main__":
     # Lightweight script output similar to your example.
     backend = FakeBelemV2()
     print("okay")
-    topo = opt_core.TopologyGraph(backend=backend)
+    topo = mq.TopologyGraph(backend=backend)
     print("Directed edges:")
     print(topo.directed_edges())

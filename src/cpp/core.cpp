@@ -20,8 +20,8 @@ double sum_weights(const std::vector<double>& weights) {
     return std::accumulate(weights.begin(), weights.end(), 0.0);
 }
 
-PYBIND11_MODULE(_core, m) {
-    m.doc() = "C++ extension for opt_core";
+PYBIND11_MODULE(native, m) {
+    m.doc() = "C++ native backend for MosaiQC";
 
     // bind C++ functions
     m.def("sum_weights", &sum_weights, py::arg("weights"), "Sum a list of weights.");

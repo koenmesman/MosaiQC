@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(opt_core_refactor LANGUAGES CXX)
+project(MosaiQC LANGUAGES CXX)
 
 # Ensure we can locate Python and pybind11 in an isolated PEP 517 build.
 find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)

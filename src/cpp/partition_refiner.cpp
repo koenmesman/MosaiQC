@@ -1431,7 +1431,11 @@ static py::dict refine_partition_impl(const CircuitGraph& graph,
                                      int ged_candidate_count,
                                      bool optimize_hardware_placement,
                                      bool store_history,
-                                     bool qap_use_routing) {
+                                     bool qap_use_routing,
+                                     bool qap_mean_product_score,
+                                     bool qap_circuit_weighted_mean_score,
+                                     bool qap_gate_count_normalized_score,
+                                     bool qap_sqrt_weight_log_cost_score) {
     
     validate_capacities(capacities, graph.num_qubits());
     const auto& C = graph.connectivity();
@@ -1572,6 +1576,7 @@ static py::dict refine_partition_impl(const CircuitGraph& graph,
     double best_fast = fast_cost;
 
     double best_ged = 0.0;
+    double best_ged_cost = 0.0;
     double best_total = std::numeric_limits<double>::infinity();
     bool ged_evaluated = false;
     int ged_eval_count = 0;
@@ -1628,18 +1633,25 @@ static py::dict refine_partition_impl(const CircuitGraph& graph,
         return ged_weight > 0.0 && (use_cpp_ged || !ged_callback.is_none());
     };
 
+    struct MappingEval {
+        double score = 0.0;
+        double cost = 0.0;
+        std::vector<int> placement;
+    };
+
     auto eval_best_cpp_mapping_for_solution =
         [&](const Solution& candidate, const std::vector<int>& ged_extra_block)
-            -> std::pair<double, std::vector<int>> {
+            -> MappingEval {
         std::vector<int> placement(static_cast<std::size_t>(k));
         std::iota(placement.begin(), placement.end(), 0);
 
         double best_score = -std::numeric_limits<double>::infinity();
+        double best_cost = std::numeric_limits<double>::infinity();
         std::vector<int> best_placement = placement;
 
         std::function<void(std::size_t)> visit_group = [&](std::size_t group_index) {
             if (group_index >= interchangeable_hardware_groups.size()) {
-                const double score = QAP_fw::QAP_cost_fw(
+                const auto eval = QAP_fw::QAP_eval_fw(
                     candidate.primary,
                     ged_extra_block,
                     graph,
@@ -1648,9 +1660,14 @@ static py::dict refine_partition_impl(const CircuitGraph& graph,
                     80,
                     1e-5,
                     parallel_ged,
-                    qap_use_routing);
-                if (score > best_score) {
-                    best_score = score;
+                    qap_use_routing,
+                    qap_mean_product_score,
+                    qap_circuit_weighted_mean_score,
+                    qap_gate_count_normalized_score,
+                    qap_sqrt_weight_log_cost_score);
+                if (eval.score > best_score) {
+                    best_score = eval.score;
+                    best_cost = eval.cost;
                     best_placement = placement;
                 }
                 return;
@@ -1672,11 +1689,11 @@ static py::dict refine_partition_impl(const CircuitGraph& graph,
         };
 
         visit_group(0);
-        return {best_score, best_placement};
+        return MappingEval{best_score, best_cost, best_placement};
     };
 
     auto eval_ged_score_for_solution = [&](const Solution& candidate)
-        -> std::pair<double, std::vector<int>> {
+        -> MappingEval {
         double g = 0.0;
         const std::vector<int> ged_extra_block = first_extra_blocks(candidate.extra_blocks);
         if (use_cpp_ged) {
@@ -1689,7 +1706,7 @@ static py::dict refine_partition_impl(const CircuitGraph& graph,
         }
         std::vector<int> identity(static_cast<std::size_t>(k));
         std::iota(identity.begin(), identity.end(), 0);
-        return {g, identity};
+        return MappingEval{g, std::max(0.0, 1.0 - g), identity};
     };
 
     auto record_ged_candidate = [&](const Solution& candidate,
@@ -1702,10 +1719,10 @@ static py::dict refine_partition_impl(const CircuitGraph& graph,
         }
 
         const auto mapping_eval = eval_ged_score_for_solution(candidate);
-        const double g = mapping_eval.first;
+        const double g = mapping_eval.score;
         // g is a mapping quality score in (0, 1]; higher is better.
         if (!(g > 0.0)) return std::numeric_limits<double>::infinity();
-        const double ged_mismatch_cost = std::max(0.0, 1.0 - g);
+        const double ged_mismatch_cost = mapping_eval.cost;
         //const double ged_mismatch_cost = std::max(0.0, g);
         const double total = (candidate_fast_cost / upper_bound_cuts) + ged_mismatch_cost * ged_weight;
         if (store_history) {
@@ -1718,9 +1735,10 @@ static py::dict refine_partition_impl(const CircuitGraph& graph,
         if (force_init || total < best_total) {
             best_total = total;
             best_ged = g;
+            best_ged_cost = ged_mismatch_cost;
             ged_evaluated = true;
             best_sol = candidate;
-            best_hardware_placement = mapping_eval.second;
+            best_hardware_placement = mapping_eval.placement;
             best_fast = candidate_fast_cost;
         }
         if (store_history) {
@@ -2201,7 +2219,7 @@ static py::dict refine_partition_impl(const CircuitGraph& graph,
     const double out_ov = overlap_trace.cost;
     const double out_fast = weighted_fast_cost(out_cut, out_ov, cut_weight, overlap_weight);
     const double out_ged_score = ged_evaluated ? best_ged : 0.0;
-    const double out_ged_cost = ged_evaluated ? std::max(0.0, 1.0 - best_ged) : 0.0;
+    const double out_ged_cost = ged_evaluated ? best_ged_cost : 0.0;
     const double out_total = ged_evaluated ? best_total : out_fast;
     const double norm_cut = out_fast/upper_bound_cuts;
     std::vector<int> best_used;
@@ -2334,6 +2352,10 @@ void bind_partition_refiner(py::module_& m) {
         py::arg("optimize_hardware_placement") = true,
         py::arg("store_history") = true,
         py::arg("qap_use_routing") = true,
+        py::arg("qap_mean_product_score") = false,
+        py::arg("qap_circuit_weighted_mean_score") = false,
+        py::arg("qap_gate_count_normalized_score") = false,
+        py::arg("qap_sqrt_weight_log_cost_score") = true,
         R"pbdoc(
 Refine a warm-start partition for a CircuitGraph.
 
@@ -2352,8 +2374,8 @@ Args:
   overlap_penalty: float, base penalty per overlapped node
   cut_weight: int, multiplier for cut_cost in the fast objective
   overlap_weight: int, multiplier for overlap_cost in the fast objective
-  ged_weight: float, multiplier applied to mapping mismatch in the combined objective. When GED is evaluated:
-              total_cost = (fast_cost / upper_bound_cuts) + (1 - ged_score) * ged_weight.
+  ged_weight: float, multiplier applied to mapping cost in the combined objective. When mapping is evaluated:
+              total_cost = (fast_cost / upper_bound_cuts) + ged_cost * ged_weight.
   parallel_ged: bool, when true and OpenMP is available, parallelize per-partition GED solves.
   topology_graphs: list[TopologyGraph], one per partition. If provided, C++ computes weighted GED:
                    using a Frank-Wolfe QAP solver over node/edge overlap products.
@@ -2384,6 +2406,19 @@ Args:
                  routing proxy for non-adjacent hardware qubit pairs. When false,
                  QAP scores direct hardware couplings and applies a fixed finite
                  penalty to missing couplings.
+  qap_mean_product_score: bool, when true, average the vertex/edge product terms
+                 before exponentiating the partition log-success score. Defaults
+                 to false, which preserves the original summed-product score.
+  qap_circuit_weighted_mean_score: bool, when true, divide the partition
+                 log-success score by the sum of circuit node and directed-edge
+                 weights before exponentiating.
+  qap_gate_count_normalized_score: bool, when true, divide the partition
+                 log-success score by the represented circuit operation count
+                 before exponentiating.
+  qap_sqrt_weight_log_cost_score: bool, default true. When true and no legacy
+                 normalization flag is enabled, divide the partition
+                 log-success score by sqrt(sum of circuit node and directed-edge
+                     weights), and use the resulting log-domain mapping cost.
 
 		Returns:
 	  dict with keys: primary, extra_block, extra_blocks, legacy_extra_block, cut_cost, overlap_cost, fast_cost, cut_weight, overlap_weight,

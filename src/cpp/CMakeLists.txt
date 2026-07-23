@@ -1,7 +1,7 @@
 # This CMakeLists is included from the project root.
-# It builds the pybind11 extension module and (optionally) a METIS test executable.
+# It builds the pybind11 native backend and (optionally) a METIS test executable.
 
-pybind11_add_module(_core MODULE
+pybind11_add_module(native MODULE
     core.cpp
     device.cpp
     circuit.cpp
@@ -13,25 +13,25 @@ pybind11_add_module(_core MODULE
     partition_refiner.cpp
 )
 
-target_compile_features(_core PRIVATE cxx_std_17)
+target_compile_features(native PRIVATE cxx_std_17)
 
 # optional flags
 if (MSVC)
-  target_compile_options(_core PRIVATE /O2)
+  target_compile_options(native PRIVATE /O2)
 else()
-  target_compile_options(_core PRIVATE -O3)
+  target_compile_options(native PRIVATE -O3)
 endif()
 
 # ---- OpenMP (optional) ----
 find_package(OpenMP QUIET)
 if(OpenMP_CXX_FOUND)
-  target_link_libraries(_core PRIVATE OpenMP::OpenMP_CXX)
-  target_compile_definitions(_core PRIVATE OPTCORE_HAS_OPENMP=1)
+  target_link_libraries(native PRIVATE OpenMP::OpenMP_CXX)
+  target_compile_definitions(native PRIVATE OPTCORE_HAS_OPENMP=1)
 else()
-  target_compile_definitions(_core PRIVATE OPTCORE_HAS_OPENMP=0)
+  target_compile_definitions(native PRIVATE OPTCORE_HAS_OPENMP=0)
 endif()
 
-# ---- Find METIS for _core (optional but enabled when found) ----
+# ---- Find METIS for native backend (optional but enabled when found) ----
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
   pkg_check_modules(METIS_PC QUIET metis)
@@ -50,18 +50,18 @@ find_library(METIS_LIBRARY metis
 )
 
 if(METIS_INCLUDE_DIR AND METIS_LIBRARY)
-  target_compile_definitions(_core PRIVATE OPTCORE_HAS_METIS=1)
-  target_include_directories(_core PRIVATE ${METIS_INCLUDE_DIR})
-  target_link_libraries(_core PRIVATE ${METIS_LIBRARY})
+  target_compile_definitions(native PRIVATE OPTCORE_HAS_METIS=1)
+  target_include_directories(native PRIVATE ${METIS_INCLUDE_DIR})
+  target_link_libraries(native PRIVATE ${METIS_LIBRARY})
 else()
-  target_compile_definitions(_core PRIVATE OPTCORE_HAS_METIS=0)
+  target_compile_definitions(native PRIVATE OPTCORE_HAS_METIS=0)
 endif()
 
 # install into Python package
-install(TARGETS _core
-  LIBRARY DESTINATION opt_core
-  RUNTIME DESTINATION opt_core
-  ARCHIVE DESTINATION opt_core
+install(TARGETS native
+  LIBRARY DESTINATION MosaiQC
+  RUNTIME DESTINATION MosaiQC
+  ARCHIVE DESTINATION MosaiQC
 )
 
 option(OPTCORE_BUILD_METIS_TEST "Build metis_partition_test executable" OFF)

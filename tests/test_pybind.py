@@ -1,7 +1,6 @@
-import opt_core
-from opt_core import _core
+import MosaiQC as mq
 
-dev = _core.DeviceInfo()
+dev = mq.DeviceInfo()
 dev.num_qubits = 5
 dev.couplings = [(0, 1), (1, 2)]
-print(_core.count_edges(dev))  # should be 2
+print(mq.count_edges(dev))  # should be 2

@@ -1,19 +1,97 @@
 [build-system]
 requires = [
-  "scikit-build-core>=0.8",
-  "pybind11>=2.10",
+  "scikit-build-core>=0.10",
+  "pybind11>=2.12",
 ]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "opt-core-refactor"
-version = "0.0.0"
-description = "Refactored installable copy of the opt_core C++ extension package"
+name = "MosaiQC"
+version = "0.1.0"
+description = "MosaiQC quantum circuit cutting core with a C++ optimization backend"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "MIT"}
-authors = [{name = "Unknown"}]
+license = "MIT"
+authors = [{name = "Koen Mesman"}]
+keywords = [
+  "quantum",
+  "circuit-cutting",
+  "qiskit",
+  "optimization",
+  "pybind11",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: C++",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = []
+
+[project.optional-dependencies]
+qiskit = [
+  "qiskit>=1.0",
+  "qiskit-aer>=0.14",
+  "qiskit-ibm-runtime>=0.20",
+]
+publish = [
+  "build>=1.2",
+  "twine>=5",
+  "cibuildwheel>=2.20",
+  "cmake>=3.18",
+  "ninja>=1.11",
+]
+dev = [
+  "pytest>=8",
+  "build>=1.2",
+  "twine>=5",
+  "cibuildwheel>=2.20",
+  "cmake>=3.18",
+  "ninja>=1.11",
+  "qiskit>=1.0",
+  "qiskit-aer>=0.14",
+  "qiskit-ibm-runtime>=0.20",
+]
 
 [tool.scikit-build]
-wheel.packages = ["src/opt_core"]
-cmake.minimum-version = "3.18"
+wheel.packages = ["src/MosaiQC", "src/opt_core"]
+cmake.version = ">=3.18"
+cmake.args = ["-G", "Unix Makefiles"]
+sdist.include = [
+  "CMakeLists.txt",
+  "LICENSE",
+  "README.md",
+  "examples",
+  "src/cpp",
+  "src/MosaiQC",
+  "src/opt_core",
+]
+sdist.exclude = [
+  "**/__pycache__",
+  "**/*.pyc",
+  "**/*.so",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+
+[tool.cibuildwheel]
+build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
+skip = "pp* *-musllinux*"
+test-command = "python -c \"import MosaiQC; print(MosaiQC.sum_weights([1, 2, 3]))\""
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+
+[tool.cibuildwheel.macos]
+archs = ["x86_64", "arm64"]
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]

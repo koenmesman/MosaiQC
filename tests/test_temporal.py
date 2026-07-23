@@ -1,5 +1,5 @@
 from qiskit import QuantumCircuit
-import opt_core
+import MosaiQC as mq
 
 
 class DummyBackend:
@@ -25,7 +25,7 @@ def test_temporal_connectivity_basic():
     qc.x(2)      # ignored
     qc.cx(1, 2)  # g3
 
-    cg = opt_core.CircuitGraph(qc)
+    cg = mq.CircuitGraph(qc)
     te = cg.temporal_events
 
     assert te.num_qubits == 4
@@ -114,7 +114,7 @@ def test_temporal_connectivity_merges_consecutive_same_pair():
     qc.cx(1, 0)  # original g1 (reverse direction)
     qc.cx(0, 1)  # original g2
 
-    cg = opt_core.CircuitGraph(qc)
+    cg = mq.CircuitGraph(qc)
     te = cg.temporal_events
 
     # All three are merged into a single temporal event.
@@ -155,14 +155,14 @@ def test_temporal_graph_can_be_partitioned_with_metis():
     qc.cx(0, 1)
     qc.cx(1, 2)
 
-    cg = opt_core.CircuitGraph(qc)
+    cg = mq.CircuitGraph(qc)
     temporal_graph = cg.temporal_graph
 
     assert temporal_graph.num_nodes == 4
     assert sum(temporal_graph.node_weights) == 16
 
     try:
-        placement = opt_core.global_temporal_METIS_solver(
+        placement = mq.global_temporal_METIS_solver(
             temporal_graph,
             [8, 8],
             imbalance=1.05,
@@ -186,7 +186,7 @@ def test_find_cutting_placement_wire_method_returns_temporal_graph():
     qc.cx(1, 2)
 
     try:
-        placement, hw_counts, q_budget, circuit_cpp, extras = opt_core.find_cutting_placement(
+        placement, hw_counts, q_budget, circuit_cpp, extras = mq.find_cutting_placement(
             qc,
             [DummyBackend(2), DummyBackend(2)],
             method="wire",
@@ -199,7 +199,7 @@ def test_find_cutting_placement_wire_method_returns_temporal_graph():
             return
         raise
 
-    assert isinstance(circuit_cpp, opt_core.CircuitGraph)
+    assert isinstance(circuit_cpp, mq.CircuitGraph)
     assert len(placement) == qc.num_qubits
     assert len(extras) == qc.num_qubits
     assert all(0 <= part < len(_flatten(q_budget)) for part in placement)
@@ -207,7 +207,7 @@ def test_find_cutting_placement_wire_method_returns_temporal_graph():
     assert sum(_flatten(q_budget)) >= sum(circuit_cpp.temporal_graph.node_weights)
     assert hw_counts == [1, 1]
 
-    result = opt_core.refine_partition(
+    result = mq.refine_partition(
         circuit_cpp,
         q_budget,
         warm_start=placement,
@@ -219,7 +219,7 @@ def test_find_cutting_placement_wire_method_returns_temporal_graph():
     assert result["extra_blocks"] == extras
 
     duplicated_primary_extras = [blocks + [placement[q]] for q, blocks in enumerate(extras)]
-    normalized = opt_core.refine_partition(
+    normalized = mq.refine_partition(
         circuit_cpp,
         q_budget,
         warm_start=placement,
@@ -237,7 +237,7 @@ def test_cut_edges_report_original_instruction_indices():
     qc.cx(1, 2)  # qc.data index 2
     qc.cx(0, 2)  # qc.data index 3
 
-    cg = opt_core.CircuitGraph(qc)
+    cg = mq.CircuitGraph(qc)
 
     assert cg.ops_with_indices() == [
         (0, 0, 1, "cx"),

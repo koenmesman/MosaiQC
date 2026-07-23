@@ -1,5 +1,5 @@
 if __name__ == "__main__":
-    import opt_core
+    import MosaiQC as mq
 
     try:
         from qiskit_ibm_runtime.fake_provider import (
@@ -16,11 +16,11 @@ if __name__ == "__main__":
         )
 
     backends = [FakeBelemV2(), FakeArmonkV2(), FakeBogotaV2(), FakeCairoV2(), FakeJakartaV2()]
-    res = opt_core.assign_hardware(45, backends)
+    res = mq.assign_hardware(45, backends)
     print(res)
 
-    res = opt_core.assign_hardware(50, backends)
+    res = mq.assign_hardware(50, backends)
     print(res)
 
-    res = opt_core.assign_hardware(51, backends)
+    res = mq.assign_hardware(51, backends)
     print(res)

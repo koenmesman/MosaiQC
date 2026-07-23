@@ -305,6 +305,28 @@ double objective_score(const WeightedGraph& large,
     return node_term + edge_term;
 }
 
+double objective_product_count(const WeightedGraph& small) {
+    double count = static_cast<double>(small.n);
+    for (double w : small.edge) {
+        if (w != 0.0) count += 1.0;
+    }
+    return std::max(1.0, count);
+}
+
+double circuit_weight_sum(const WeightedGraph& circuit) {
+    double total = 0.0;
+    for (double w : circuit.node) total += std::max(0.0, w);
+    for (double w : circuit.edge) total += std::max(0.0, w);
+    return std::max(1.0, total);
+}
+
+double circuit_gate_count(const WeightedGraph& circuit) {
+    double total = 0.0;
+    for (double w : circuit.node) total += std::max(0.0, w);
+    for (double w : circuit.edge) total += 0.5 * std::max(0.0, w);
+    return std::max(1.0, total);
+}
+
 // Quadratic term Q(U, V) = <(A*U*B), V>.
 double quad_bilinear(const WeightedGraph& large,
                      const WeightedGraph& small,
@@ -348,7 +370,8 @@ void gradient_score(const WeightedGraph& large,
 double solve_partition_fw_score(const WeightedGraph& large,
                                 const WeightedGraph& small,
                                 int max_iters,
-                                double tol) {
+                                double tol,
+                                double normalization_denominator) {
     const int rows = large.n;
     const int cols = small.n;
     if (cols == 0) return 0.0;
@@ -403,20 +426,25 @@ double solve_partition_fw_score(const WeightedGraph& large,
     const std::vector<int> final_assign = hungarian_max_rect(X, rows, cols);
     std::vector<double> X_round;
     assignment_to_matrix(final_assign, rows, cols, X_round);
-    return objective_score(large, small, X_round);
+    const double score = objective_score(large, small, X_round);
+    return score / normalization_denominator;
 }
 
 }  // namespace
 
-double QAP_cost_fw(const std::vector<int>& partition_mapping_primary,
-                   const std::vector<int>& partition_mapping_extra,
-                   const CircuitGraph& circuit_graph,
-                   const std::vector<const TopologyGraph*>& hardwares,
-                   const std::vector<int>& hardware_placement,
-                   int max_iters,
-                   double tol,
-                   bool parallel_partitions,
-                   bool use_routed_hardware_edges) {
+QAPEvaluation QAP_eval_fw(const std::vector<int>& partition_mapping_primary,
+                          const std::vector<int>& partition_mapping_extra,
+                          const CircuitGraph& circuit_graph,
+                          const std::vector<const TopologyGraph*>& hardwares,
+                          const std::vector<int>& hardware_placement,
+                          int max_iters,
+                          double tol,
+                          bool parallel_partitions,
+                          bool use_routed_hardware_edges,
+                          bool mean_product_score,
+                          bool circuit_weighted_mean_score,
+                          bool gate_count_normalized_score,
+                          bool sqrt_weight_log_cost_score) {
     const int n = static_cast<int>(circuit_graph.num_qubits());
     if (static_cast<int>(partition_mapping_primary.size()) != n ||
         static_cast<int>(partition_mapping_extra.size()) != n) {
@@ -426,6 +454,15 @@ double QAP_cost_fw(const std::vector<int>& partition_mapping_primary,
     if (hardwares.empty()) {
         throw std::invalid_argument("QAP_cost_fw(): hardwares must be non-empty");
     }
+    const int legacy_normalization_modes = (mean_product_score ? 1 : 0) +
+                                           (circuit_weighted_mean_score ? 1 : 0) +
+                                           (gate_count_normalized_score ? 1 : 0);
+    if (legacy_normalization_modes > 1) {
+        throw std::invalid_argument(
+            "QAP_cost_fw(): enable at most one QAP score normalization mode");
+    }
+    const bool use_sqrt_weight_log_cost = sqrt_weight_log_cost_score &&
+                                          legacy_normalization_modes == 0;
 
     const int num_parts = hardware_placement.empty()
                               ? static_cast<int>(hardwares.size())
@@ -543,14 +580,25 @@ double QAP_cost_fw(const std::vector<int>& partition_mapping_primary,
     }
 
     double total_squared_infidelity = 0.0;
+    double total_log_cost = 0.0;
     int infeasible_flag = 0;
 
 #if defined(OPTCORE_HAS_OPENMP) && OPTCORE_HAS_OPENMP
     if (parallel_partitions && num_parts > 1) {
-#pragma omp parallel for reduction(+:total_squared_infidelity)
+#pragma omp parallel for reduction(+:total_squared_infidelity,total_log_cost)
         for (int p = 0; p < num_parts; ++p) {
             const WeightedGraph circ_g = build_circuit_partition_graph(probs[static_cast<std::size_t>(p)]);
             const WeightedGraph& hw_g = hw_graphs[static_cast<std::size_t>(part_to_hw[static_cast<std::size_t>(p)])];
+            double normalization_denominator = 1.0;
+            if (mean_product_score) {
+                normalization_denominator = objective_product_count(circ_g);
+            } else if (circuit_weighted_mean_score) {
+                normalization_denominator = circuit_weight_sum(circ_g);
+            } else if (gate_count_normalized_score) {
+                normalization_denominator = circuit_gate_count(circ_g);
+            } else if (use_sqrt_weight_log_cost) {
+                normalization_denominator = std::sqrt(circuit_weight_sum(circ_g));
+            }
 
             const WeightedGraph* large = &hw_g;
             const WeightedGraph* small = &circ_g;
@@ -559,14 +607,18 @@ double QAP_cost_fw(const std::vector<int>& partition_mapping_primary,
                 small = &hw_g;
             }
 
-            const double s = solve_partition_fw_score(*large, *small, max_iters, tol);
+            const double s = solve_partition_fw_score(*large, *small, max_iters, tol, normalization_denominator);
             if (!std::isfinite(s)) {
 #pragma omp atomic write
                 infeasible_flag = 1;
             } else {
-                const double placement_fidelity = std::clamp(std::exp(s), 0.0, 1.0);
-                const double placement_infidelity = 1.0 - placement_fidelity;
-                total_squared_infidelity += placement_infidelity * placement_infidelity;
+                if (use_sqrt_weight_log_cost) {
+                    total_log_cost += std::max(0.0, -s);
+                } else {
+                    const double placement_fidelity = std::clamp(std::exp(s), 0.0, 1.0);
+                    const double placement_infidelity = 1.0 - placement_fidelity;
+                    total_squared_infidelity += placement_infidelity * placement_infidelity;
+                }
             }
         }
     } else
@@ -578,6 +630,16 @@ double QAP_cost_fw(const std::vector<int>& partition_mapping_primary,
         for (int p = 0; p < num_parts; ++p) {
             const WeightedGraph circ_g = build_circuit_partition_graph(probs[static_cast<std::size_t>(p)]);
             const WeightedGraph& hw_g = hw_graphs[static_cast<std::size_t>(part_to_hw[static_cast<std::size_t>(p)])];
+            double normalization_denominator = 1.0;
+            if (mean_product_score) {
+                normalization_denominator = objective_product_count(circ_g);
+            } else if (circuit_weighted_mean_score) {
+                normalization_denominator = circuit_weight_sum(circ_g);
+            } else if (gate_count_normalized_score) {
+                normalization_denominator = circuit_gate_count(circ_g);
+            } else if (use_sqrt_weight_log_cost) {
+                normalization_denominator = std::sqrt(circuit_weight_sum(circ_g));
+            }
 
             const WeightedGraph* large = &hw_g;
             const WeightedGraph* small = &circ_g;
@@ -586,18 +648,56 @@ double QAP_cost_fw(const std::vector<int>& partition_mapping_primary,
                 small = &hw_g;
             }
 
-            const double s = solve_partition_fw_score(*large, *small, max_iters, tol);
-            if (!std::isfinite(s)) return 0.0;
-            const double placement_fidelity = std::clamp(std::exp(s), 0.0, 1.0);
-            const double placement_infidelity = 1.0 - placement_fidelity;
-            total_squared_infidelity += placement_infidelity * placement_infidelity;
+            const double s = solve_partition_fw_score(*large, *small, max_iters, tol, normalization_denominator);
+            if (!std::isfinite(s)) return QAPEvaluation{};
+            if (use_sqrt_weight_log_cost) {
+                total_log_cost += std::max(0.0, -s);
+            } else {
+                const double placement_fidelity = std::clamp(std::exp(s), 0.0, 1.0);
+                const double placement_infidelity = 1.0 - placement_fidelity;
+                total_squared_infidelity += placement_infidelity * placement_infidelity;
+            }
         }
     }
 
-    if (infeasible_flag != 0) return 0.0;
+    if (infeasible_flag != 0) return QAPEvaluation{};
+    if (use_sqrt_weight_log_cost) {
+        const double mean_log_cost = total_log_cost / static_cast<double>(num_parts);
+        const double score = std::clamp(std::exp(-mean_log_cost), 0.0, 1.0);
+        return QAPEvaluation{score, mean_log_cost};
+    }
     const double mean_squared_infidelity =
         total_squared_infidelity / static_cast<double>(num_parts);
-    return std::max(0.0, 1.0 - mean_squared_infidelity);
+    const double score = std::max(0.0, 1.0 - mean_squared_infidelity);
+    return QAPEvaluation{score, std::max(0.0, 1.0 - score)};
+}
+
+double QAP_cost_fw(const std::vector<int>& partition_mapping_primary,
+                   const std::vector<int>& partition_mapping_extra,
+                   const CircuitGraph& circuit_graph,
+                   const std::vector<const TopologyGraph*>& hardwares,
+                   const std::vector<int>& hardware_placement,
+                   int max_iters,
+                   double tol,
+                   bool parallel_partitions,
+                   bool use_routed_hardware_edges,
+                   bool mean_product_score,
+                   bool circuit_weighted_mean_score,
+                   bool gate_count_normalized_score,
+                   bool sqrt_weight_log_cost_score) {
+    return QAP_eval_fw(partition_mapping_primary,
+                       partition_mapping_extra,
+                       circuit_graph,
+                       hardwares,
+                       hardware_placement,
+                       max_iters,
+                       tol,
+                       parallel_partitions,
+                       use_routed_hardware_edges,
+                       mean_product_score,
+                       circuit_weighted_mean_score,
+                       gate_count_normalized_score,
+                       sqrt_weight_log_cost_score).score;
 }
 
 }  // namespace QAP_fw

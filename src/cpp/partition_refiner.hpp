@@ -18,5 +18,9 @@ class module_;
 //                    overlap_local_callback=None, use_tabu=False, tabu_tenure=7,
 //                    tabu_max_iters=0, parallel_tabu=False, ged_balance=1.0,
 //                    ged_eval_interval=0, ged_candidate_count=0,
-//                    store_history=True, qap_use_routing=True) -> dict
+//                    store_history=True, qap_use_routing=True,
+//                    qap_mean_product_score=False,
+//                    qap_circuit_weighted_mean_score=False,
+//                    qap_gate_count_normalized_score=False,
+//                    qap_sqrt_weight_log_cost_score=True) -> dict
 void bind_partition_refiner(pybind11::module_& m);

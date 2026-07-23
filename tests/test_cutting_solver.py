@@ -8,7 +8,7 @@ from qiskit_addon_cutting import cut_gates, expand_observables, partition_proble
 from qiskit_addon_cutting.instructions import CutWire, Move
 from qiskit_addon_cutting.qpd import TwoQubitQPDGate
 
-import opt_core
+import MosaiQC as mq
 
 
 class DummyBackend:
@@ -154,8 +154,8 @@ def test_find_cutting_placement_shape_and_block_ids():
     backends = [DummyBackend(3), DummyBackend(4), DummyBackend(4)]
 
     try:
-        placement, hw_counts, q_budget, circuit_cpp = opt_core.find_cutting_placement(qc, backends)
-        result = opt_core.refine_partition(circuit_cpp, q_budget, warm_start=placement)
+        placement, hw_counts, q_budget, circuit_cpp = mq.find_cutting_placement(qc, backends)
+        result = mq.refine_partition(circuit_cpp, q_budget, warm_start=placement)
     except RuntimeError as exc:
         if "METIS is not available" in str(exc):
             #pytest.skip("METIS is not available in this build")
@@ -185,11 +185,11 @@ def test_refine_partition_overlap_is_beneficial():
     qc.cx(0, 3)
     qc.cx(0, 2)
 
-    graph = opt_core.CircuitGraph(qc)
+    graph = mq.CircuitGraph(qc)
     capacities = [4, 4]
     warm_start = [1, 0, 0, 1]
 
-    no_overlap = opt_core.refine_partition(
+    no_overlap = mq.refine_partition(
         graph,
         capacities,
         warm_start=warm_start,
@@ -201,7 +201,7 @@ def test_refine_partition_overlap_is_beneficial():
         ged_weight=0.0,
     )
 
-    with_overlap = opt_core.refine_partition(
+    with_overlap = mq.refine_partition(
         graph,
         capacities,
         warm_start=warm_start,
@@ -235,8 +235,8 @@ def test_refine_partition_final_overlap_gate_cut_cost_is_not_underreported():
     qc.cx(0, 3)
     qc.cx(0, 2)
 
-    graph = opt_core.CircuitGraph(qc)
-    result = opt_core.refine_partition(
+    graph = mq.CircuitGraph(qc)
+    result = mq.refine_partition(
         graph,
         [4, 4],
         warm_start=[1, 0, 0, 1],
@@ -263,8 +263,8 @@ def test_mutual_overlap_counts_both_replicas():
     qc = QuantumCircuit(2)
     qc.cx(0, 1)
 
-    graph = opt_core.CircuitGraph(qc)
-    result = opt_core.refine_partition(
+    graph = mq.CircuitGraph(qc)
+    result = mq.refine_partition(
         graph,
         [2, 2],
         warm_start=[1, 0],
@@ -294,8 +294,8 @@ def test_refine_partition_final_overlap_wire_cut_cost_is_not_underreported():
     qc.swap(0, 1)
     qc.swap(0, 2)
 
-    graph = opt_core.CircuitGraph(qc)
-    result = opt_core.refine_partition(
+    graph = mq.CircuitGraph(qc)
+    result = mq.refine_partition(
         graph,
         [3, 3],
         warm_start=[1, 0, 1],
@@ -329,8 +329,8 @@ def test_multi_overlap_gate_cuts_are_realized_as_valid_subcircuits():
     qc.cx(0, 2)
 
     capacities = [2, 3, 3]
-    result = opt_core.refine_partition(
-        opt_core.CircuitGraph(qc),
+    result = mq.refine_partition(
+        mq.CircuitGraph(qc),
         capacities,
         warm_start=[0, 1, 2, 0],
         warm_start_extra_blocks=[[1, 2], [], [], []],
@@ -361,8 +361,8 @@ def test_multi_overlap_wire_cuts_are_realized_as_valid_subcircuits():
     qc.swap(0, 3)
 
     capacities = [2, 2, 2]
-    result = opt_core.refine_partition(
-        opt_core.CircuitGraph(qc),
+    result = mq.refine_partition(
+        mq.CircuitGraph(qc),
         capacities,
         warm_start=[0, 1, 2, 0],
         warm_start_extra_blocks=[[1, 2], [], [], []],
@@ -388,12 +388,12 @@ def test_refine_partition_lazy_ged_callback():
     qc = QuantumCircuit(4)
     qc.cx(0, 1)
     qc.cx(1, 2)
-    graph = opt_core.CircuitGraph(qc)
+    graph = mq.CircuitGraph(qc)
 
     capacities = [2, 2]
     warm_start = [0, 0, 1, 1]
 
-    result = opt_core.refine_partition(
+    result = mq.refine_partition(
         graph,
         capacities,
         warm_start=warm_start,
@@ -422,12 +422,12 @@ def test_refine_partition_tabu_mode_with_parallel_scoring():
     qc.cx(3, 4)
     qc.cx(4, 5)
     qc.cx(0, 5)
-    graph = opt_core.CircuitGraph(qc)
+    graph = mq.CircuitGraph(qc)
 
     capacities = [3, 3]
     warm_start = [0, 1, 0, 1, 0, 1]
 
-    baseline = opt_core.refine_partition(
+    baseline = mq.refine_partition(
         graph,
         capacities,
         warm_start=warm_start,
@@ -435,7 +435,7 @@ def test_refine_partition_tabu_mode_with_parallel_scoring():
         ged_weight=0.0,
     )
 
-    tabu = opt_core.refine_partition(
+    tabu = mq.refine_partition(
         graph,
         capacities,
         warm_start=warm_start,

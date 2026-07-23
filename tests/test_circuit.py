@@ -1,5 +1,5 @@
 from qiskit import QuantumCircuit
-import opt_core
+import MosaiQC as mq
 
 if __name__ == "__main__":
     qc = QuantumCircuit(4)
@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
     print(qc)
 
-    circuit = opt_core.CircuitGraph(qc)
+    circuit = mq.CircuitGraph(qc)
 
     print("operations")
     print(circuit.ops())
